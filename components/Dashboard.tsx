@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { BudgetMonth, Transaction, TransactionType, PetrolData, VehicleDate, SectionId, BudgetLayout, SectionStyle, SliderItem, SectionVariant } from '../types';
 import { updateMonth } from '../services/storageService';
-import { Plus, Trash2, Calculator, Save, TrendingUp, Edit2, Check, X, GripHorizontal, Link as LinkIcon, Unlink, Settings, Layout, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, ChevronDown, ChevronUp, List, Sliders as SlidersIcon, FileText, Minus, Car } from 'lucide-react';
+import { Plus, Trash2, Calculator, Save, TrendingUp, Edit2, Check, X, GripHorizontal, Link as LinkIcon, Unlink, Settings, Layout, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, ChevronDown, ChevronUp, List, Sliders as SlidersIcon, FileText, Minus, Car, Loader2, Clock3 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 // DnD Kit Imports
@@ -768,6 +768,8 @@ const Dashboard: React.FC<DashboardProps> = ({ monthData, onUpdate, onUnsavedCha
   const [isDirty, setIsDirty] = useState(false);
   const [linkedSpending, setLinkedSpending] = useState(true);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'pending' | 'saving' | 'saved'>('idle');
+  const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Add Section Modal State
   const [showAddSection, setShowAddSection] = useState(false);
@@ -789,6 +791,11 @@ const Dashboard: React.FC<DashboardProps> = ({ monthData, onUpdate, onUnsavedCha
     setIsOrganiseMode(false);
     setSelectedSectionId(null);
     setActiveSettingsId(null);
+    if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+        autoSaveTimeoutRef.current = null;
+    }
+    setAutoSaveStatus('idle');
   }, [monthData]);
 
   // Notify Parent of changes
@@ -797,6 +804,41 @@ const Dashboard: React.FC<DashboardProps> = ({ monthData, onUpdate, onUnsavedCha
           onUnsavedChanges(isDirty, localData);
       }
   }, [isDirty, localData, onUnsavedChanges]);
+
+  // Autosave dirty state after short inactivity
+  useEffect(() => {
+      if (autoSaveTimeoutRef.current) {
+          clearTimeout(autoSaveTimeoutRef.current);
+          autoSaveTimeoutRef.current = null;
+      }
+
+      if (!isDirty) {
+          return;
+      }
+
+      setAutoSaveStatus('pending');
+      autoSaveTimeoutRef.current = setTimeout(() => {
+          setAutoSaveStatus('saving');
+          onUpdate(localData);
+          updateMonth(localData);
+          setIsDirty(false);
+          setAutoSaveStatus('saved');
+          autoSaveTimeoutRef.current = null;
+      }, 2500);
+
+      return () => {
+          if (autoSaveTimeoutRef.current) {
+              clearTimeout(autoSaveTimeoutRef.current);
+              autoSaveTimeoutRef.current = null;
+          }
+      };
+  }, [isDirty, localData, onUpdate]);
+
+  useEffect(() => {
+      if (autoSaveStatus !== 'saved') return;
+      const timeout = setTimeout(() => setAutoSaveStatus('idle'), 2000);
+      return () => clearTimeout(timeout);
+  }, [autoSaveStatus]);
 
   // --- Organise Mode Logic (Keyboard) ---
   useEffect(() => {
@@ -882,9 +924,14 @@ const Dashboard: React.FC<DashboardProps> = ({ monthData, onUpdate, onUnsavedCha
   };
 
   const handleSave = () => {
+    if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+        autoSaveTimeoutRef.current = null;
+    }
     onUpdate(localData);
     updateMonth(localData);
     setIsDirty(false);
+    setAutoSaveStatus('saved');
   };
 
   // --- Sensors (Transaction Dragging Only) ---
@@ -1234,7 +1281,7 @@ const Dashboard: React.FC<DashboardProps> = ({ monthData, onUpdate, onUnsavedCha
         </div>
         <div className="flex gap-3 w-full md:w-auto">
            {/* Organise Toggle */}
-           <button 
+           <button
                 onClick={() => {
                     const newMode = !isOrganiseMode;
                     setIsOrganiseMode(newMode);
@@ -1242,12 +1289,28 @@ const Dashboard: React.FC<DashboardProps> = ({ monthData, onUpdate, onUnsavedCha
                 }}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all border ${isOrganiseMode ? 'bg-blue-100 text-blue-700 border-blue-300 ring-2 ring-blue-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
            >
-               <Layout size={18} /> 
+               <Layout size={18} />
                {isOrganiseMode ? 'Finish Organising' : 'Organise Sections'}
            </button>
 
            <button onClick={() => setShowAddSection(true)} className="flex-1 md:flex-none justify-center flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg shadow-sm transition-all font-medium text-sm"><Plus size={18} /> Add Section</button>
-           <button onClick={handleSave} disabled={!isDirty} className={`flex-1 md:flex-none justify-center flex items-center gap-2 px-6 py-2 rounded-lg shadow-sm font-medium text-sm transition-all ${isDirty ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}><Save size={18} />{isDirty ? 'Save Changes' : 'Saved'}</button>
+           <div className="flex-1 md:flex-none flex flex-col items-stretch">
+               <button onClick={handleSave} disabled={!isDirty} className={`justify-center flex items-center gap-2 px-6 py-2 rounded-lg shadow-sm font-medium text-sm transition-all ${isDirty ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}><Save size={18} />{isDirty ? 'Save Now' : 'Saved'}</button>
+               <div className="text-[11px] text-center min-h-[20px] mt-1 flex items-center justify-center gap-1">
+                    {autoSaveStatus === 'pending' && (
+                        <span className="text-amber-600 font-medium flex items-center gap-1"><Clock3 size={12} /> Autosave scheduled…</span>
+                    )}
+                    {autoSaveStatus === 'saving' && (
+                        <span className="text-blue-600 font-medium flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Saving…</span>
+                    )}
+                    {autoSaveStatus === 'saved' && (
+                        <span className="text-emerald-600 font-medium flex items-center gap-1"><Check size={12} /> All changes saved</span>
+                    )}
+                    {autoSaveStatus === 'idle' && !isDirty && (
+                        <span className="text-slate-400">No pending changes</span>
+                    )}
+               </div>
+           </div>
         </div>
       </div>
         

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Folder, BudgetMonth, TransactionType, SectionId } from '../types';
-import { Folder as FolderIcon, FileSpreadsheet, Plus, ChevronRight, Home, CheckCircle2, X, MoreVertical, Edit, Trash2, Palette, FilePlus, FolderPlus, Copy, AlertTriangle, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
+import { Folder as FolderIcon, FileSpreadsheet, Plus, ChevronRight, Home, CheckCircle2, X, MoreVertical, Edit, Trash2, Palette, FilePlus, FolderPlus, Copy, AlertTriangle, TrendingUp, TrendingDown, Wallet, Search, ArrowUpRight, ArrowDownRight, BarChart3 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { DndContext, useDraggable, useDroppable, DragEndEvent, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { createNewMonth, createBlankMonth } from '../services/storageService';
@@ -16,21 +16,27 @@ interface FolderDashboardProps {
 // Format Helper
 const formatGBP = (val: number) => `£${val.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+type SortMode = 'recent' | 'name-asc' | 'remaining-desc' | 'remaining-asc';
+type MonthSummary = { income: number; expenses: number; remaining: number };
+type TimelineSummary = MonthSummary & { id: string; name: string; index: number };
+
 // Draggable Sheet Icon
-const DraggableSheet = ({ 
-    month, 
-    isSelected, 
-    onClick, 
+const DraggableSheet = ({
+    month,
+    isSelected,
+    onClick,
     onContextMenu,
     onHover,
-    onLeave
-}: { 
-    month: BudgetMonth, 
-    isSelected: boolean, 
-    onClick: (e: React.MouseEvent) => void, 
+    onLeave,
+    summary
+}: {
+    month: BudgetMonth,
+    isSelected: boolean,
+    onClick: (e: React.MouseEvent) => void,
     onContextMenu: (e: React.MouseEvent) => void,
     onHover: () => void,
-    onLeave: () => void
+    onLeave: () => void,
+    summary?: MonthSummary
 }) => {
     const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
         id: `sheet_${month.id}`,
@@ -61,6 +67,14 @@ const DraggableSheet = ({
             <span className={`text-xs font-medium text-center truncate w-full px-1 ${isSelected ? 'text-blue-700 font-bold' : 'text-slate-600'}`}>
                 {month.name}
             </span>
+            {summary && (
+                <div className="text-[11px] text-center leading-tight mt-1">
+                    <span className={`font-semibold ${summary.remaining >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {formatGBP(summary.remaining)}
+                    </span>
+                    <span className="block text-[10px] uppercase tracking-wide text-slate-400">remaining</span>
+                </div>
+            )}
         </div>
     );
 };
@@ -116,7 +130,10 @@ const FolderDashboard: React.FC<FolderDashboardProps> = ({ folders, months, onUp
     const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
     const [selection, setSelection] = useState<string[]>([]);
     const [dragActive, setDragActive] = useState(false);
-    
+    const [searchQuery, setSearchQuery] = useState('');
+    const [sortMode, setSortMode] = useState<SortMode>('recent');
+    const [bulkMoveTarget, setBulkMoveTarget] = useState('');
+
     // Hover Preview State
     const [hoveredMonthId, setHoveredMonthId] = useState<string | null>(null);
     
@@ -137,9 +154,48 @@ const FolderDashboard: React.FC<FolderDashboardProps> = ({ folders, months, onUp
     const [contextMenu, setContextMenu] = useState<{ visible: boolean, x: number, y: number, type: 'empty' | 'folder' | 'sheet', id?: string } | null>(null);
     const contextMenuRef = useRef<HTMLDivElement>(null);
 
-    // Filter Items for View
-    const visibleFolders = folders.filter(f => f.parentId === currentFolderId);
-    const visibleMonths = months.filter(m => m.folderId === currentFolderId);
+    const selectedSheets = useMemo(() => months.filter(m => selection.includes(m.id)), [months, selection]);
+    const selectedFolders = useMemo(() => folders.filter(f => selection.includes(f.id)), [folders, selection]);
+    const hasSheetSelection = selectedSheets.length > 0;
+
+    const folderChildren = useMemo(() => folders.filter(f => f.parentId === currentFolderId), [folders, currentFolderId]);
+    const visibleFolders = useMemo(() => {
+        const query = searchQuery.trim().toLowerCase();
+        if (!query) return [...folderChildren].sort((a, b) => a.name.localeCompare(b.name));
+        return folderChildren
+            .filter(folder => folder.name.toLowerCase().includes(query))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [folderChildren, searchQuery]);
+
+    const monthEntries = useMemo(() => (
+        months
+            .map((month, index) => ({ month, summary: getMonthSummary(month), index }))
+            .filter(entry => entry.month.folderId === currentFolderId)
+    ), [months, currentFolderId]);
+
+    const visibleMonthEntries = useMemo(() => {
+        const query = searchQuery.trim().toLowerCase();
+        let entries = [...monthEntries];
+        if (query) {
+            entries = entries.filter(entry => entry.month.name.toLowerCase().includes(query));
+        }
+
+        switch (sortMode) {
+            case 'name-asc':
+                entries.sort((a, b) => a.month.name.localeCompare(b.month.name));
+                break;
+            case 'remaining-desc':
+                entries.sort((a, b) => b.summary.remaining - a.summary.remaining);
+                break;
+            case 'remaining-asc':
+                entries.sort((a, b) => a.summary.remaining - b.summary.remaining);
+                break;
+            default:
+                entries.sort((a, b) => b.index - a.index);
+        }
+
+        return entries;
+    }, [monthEntries, searchQuery, sortMode]);
 
     // -- Drag & Drop Sensors --
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 10 } }));
@@ -226,7 +282,7 @@ const FolderDashboard: React.FC<FolderDashboardProps> = ({ folders, months, onUp
     };
 
     // -- Calculations for Preview --
-    const getMonthSummary = (month: BudgetMonth) => {
+    const getMonthSummary = (month: BudgetMonth): MonthSummary => {
         let income = 0;
         let expenses = 0;
 
@@ -265,6 +321,31 @@ const FolderDashboard: React.FC<FolderDashboardProps> = ({ folders, months, onUp
         if (!month) return null;
         return { ...getMonthSummary(month), name: month.name };
     }, [hoveredMonthId, months]);
+
+    const timelineSummaries = useMemo<TimelineSummary[]>(() => months.map((month, index) => ({
+        id: month.id,
+        name: month.name,
+        index,
+        ...getMonthSummary(month)
+    })), [months]);
+
+    const lastSixSummaries = useMemo(() => timelineSummaries.slice(-6), [timelineSummaries]);
+    const avgIncome = lastSixSummaries.length ? lastSixSummaries.reduce((sum, entry) => sum + entry.income, 0) / lastSixSummaries.length : 0;
+    const avgExpenses = lastSixSummaries.length ? lastSixSummaries.reduce((sum, entry) => sum + entry.expenses, 0) / lastSixSummaries.length : 0;
+    const avgRemaining = lastSixSummaries.length ? lastSixSummaries.reduce((sum, entry) => sum + entry.remaining, 0) / lastSixSummaries.length : 0;
+    const changeVsLast = lastSixSummaries.length >= 2
+        ? lastSixSummaries[lastSixSummaries.length - 1].remaining - lastSixSummaries[lastSixSummaries.length - 2].remaining
+        : 0;
+    const bestMonth = useMemo(() => {
+        if (!timelineSummaries.length) return null;
+        return timelineSummaries.reduce((best, current) => current.remaining > best.remaining ? current : best);
+    }, [timelineSummaries]);
+    const chartMax = lastSixSummaries.length ? Math.max(...lastSixSummaries.map(entry => Math.max(entry.income, entry.expenses))) : 0;
+    const chartBaseline = chartMax || 1;
+    const changePositive = changeVsLast >= 0;
+    const insightsAvailable = lastSixSummaries.length > 0;
+    const formattedChange = formatGBP(Math.abs(changeVsLast));
+    const bestMonthColor = bestMonth && bestMonth.remaining >= 0 ? 'text-emerald-600' : 'text-red-600';
 
 
     // -- Actions --
@@ -346,6 +427,31 @@ const FolderDashboard: React.FC<FolderDashboardProps> = ({ folders, months, onUp
         setContextMenu(null);
     };
 
+    const handleBulkMove = (destinationId: string | null) => {
+        if (!hasSheetSelection) return;
+        const updatedMonths = months.map(m => selection.includes(m.id) ? { ...m, folderId: destinationId } : m);
+        onUpdateMonths(updatedMonths);
+        setSelection([]);
+    };
+
+    const handleBulkDuplicate = () => {
+        if (!hasSheetSelection) return;
+        const duplicates = selectedSheets.map(sheet => {
+            const newSheet = createNewMonth(sheet);
+            newSheet.folderId = sheet.folderId ?? null;
+            return newSheet;
+        });
+        onUpdateMonths([...months, ...duplicates]);
+        setSelection([]);
+    };
+
+    const handleBulkDelete = () => {
+        if (selection.length === 0) return;
+        setItemsToDelete(selection);
+        setShowDeleteModal(true);
+        setContextMenu(null);
+    };
+
     const setFolderColor = (color: string) => {
         if (targetId) {
             onUpdateFolders(folders.map(f => f.id === targetId ? { ...f, color } : f));
@@ -396,12 +502,12 @@ const FolderDashboard: React.FC<FolderDashboardProps> = ({ folders, months, onUp
                 onContextMenu={(e) => handleContextMenu(e, 'empty')}
             >
                 {/* Toolbar */}
-                <div className="bg-white border-b border-slate-200 px-6 py-3 flex justify-between items-center sticky top-0 z-10">
+                <div className="bg-white border-b border-slate-200 px-6 py-3 flex flex-col gap-3 lg:flex-row lg:justify-between lg:items-center sticky top-0 z-10">
                     <div className="flex items-center gap-2 text-sm text-slate-600">
                         {getBreadcrumbs().map((crumb, index) => (
                             <React.Fragment key={index}>
                                 {index > 0 && <ChevronRight size={14} className="text-slate-400" />}
-                                <button 
+                                <button
                                     onClick={(e) => { e.stopPropagation(); setCurrentFolderId(crumb.id as string | null); }}
                                     className={`hover:bg-slate-100 px-2 py-1 rounded transition-colors flex items-center gap-1 ${index === 0 ? 'font-bold text-slate-800' : ''}`}
                                 >
@@ -411,16 +517,164 @@ const FolderDashboard: React.FC<FolderDashboardProps> = ({ folders, months, onUp
                             </React.Fragment>
                         ))}
                     </div>
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); setShowNewFolderModal(true); setInputText(""); }}
-                        className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-200"
-                    >
-                        <Plus size={16} /> New Folder
-                    </button>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3" onClick={(e) => e.stopPropagation()}>
+                        <div className="relative">
+                            <Search size={14} className="text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Search folders or sheets"
+                                className="pl-8 pr-3 py-2 rounded-lg border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-blue-500 text-sm text-slate-700 w-full sm:w-56"
+                            />
+                        </div>
+                        <select
+                            value={sortMode}
+                            onChange={(e) => setSortMode(e.target.value as SortMode)}
+                            className="py-2 px-3 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 focus:ring-2 focus:ring-blue-500"
+                        >
+                            <option value="recent">Recent first</option>
+                            <option value="name-asc">Name A-Z</option>
+                            <option value="remaining-desc">Cash left (high-low)</option>
+                            <option value="remaining-asc">Cash left (low-high)</option>
+                        </select>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setShowNewFolderModal(true); setInputText(""); }}
+                            className="flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-200"
+                        >
+                            <Plus size={16} /> New Folder
+                        </button>
+                    </div>
                 </div>
+
+                {selection.length > 0 && (
+                    <div className="bg-blue-50 border-b border-blue-100 px-6 py-3 flex flex-wrap items-center gap-3 text-sm text-blue-900" onClick={(e) => e.stopPropagation()}>
+                        <span className="font-semibold">{selection.length} selected</span>
+                        {selectedFolders.length > 0 && (
+                            <span className="text-xs uppercase tracking-wide text-blue-600">{selectedFolders.length} folder(s)</span>
+                        )}
+                        {hasSheetSelection && (
+                            <span className="text-xs uppercase tracking-wide text-blue-600">{selectedSheets.length} sheet(s)</span>
+                        )}
+                        {hasSheetSelection && (
+                            <>
+                                <div className="flex items-center gap-2">
+                                    <label className="text-xs font-semibold uppercase tracking-wide">Move to</label>
+                                    <select
+                                        value={bulkMoveTarget}
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            setBulkMoveTarget(value);
+                                            if (!value) return;
+                                            const destination = value === '__root' ? null : value;
+                                            handleBulkMove(destination);
+                                            setBulkMoveTarget('');
+                                        }}
+                                        className="py-1.5 px-3 rounded-lg border border-blue-200 bg-white text-xs text-blue-900"
+                                    >
+                                        <option value="">Select…</option>
+                                        <option value="__root">Home</option>
+                                        {folders.map(folder => (
+                                            <option key={folder.id} value={folder.id}>{folder.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <button
+                                    onClick={handleBulkDuplicate}
+                                    className="flex items-center gap-1 bg-white text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-100"
+                                >
+                                    <Copy size={14} /> Duplicate
+                                </button>
+                            </>
+                        )}
+                        <button
+                            onClick={handleBulkDelete}
+                            className="flex items-center gap-1 text-xs font-semibold text-red-600 bg-white border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50"
+                        >
+                            <Trash2 size={14} /> Delete
+                        </button>
+        
+                        <button
+                            onClick={() => setSelection([])}
+                            className="text-xs text-blue-600 underline font-semibold"
+                        >
+                            Clear
+                        </button>
+                    </div>
+                )}
 
                 {/* Grid Area */}
                 <div className="flex-1 p-6 bg-slate-50 overflow-y-auto pb-72"> {/* Significant padding to prevent content hiding behind static footer */}
+                    {insightsAvailable && (
+                        <div className="mb-6 grid gap-4 xl:grid-cols-2">
+                            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col gap-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Trends & Insights</p>
+                                        <h3 className="text-xl font-bold text-slate-800">Last 6 months</h3>
+                                    </div>
+                                    <div className="text-xs font-semibold bg-blue-50 text-blue-600 px-3 py-1 rounded-full">History</div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                        <p className="text-xs uppercase tracking-wide text-slate-400">Avg income</p>
+                                        <p className="text-lg font-bold text-emerald-600">{formatGBP(avgIncome)}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs uppercase tracking-wide text-slate-400">Avg outgoing</p>
+                                        <p className="text-lg font-bold text-red-600">{formatGBP(avgExpenses)}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs uppercase tracking-wide text-slate-400">Avg remaining</p>
+                                        <p className="text-lg font-bold text-blue-700">{formatGBP(avgRemaining)}</p>
+                                    </div>
+                                    <div className={`flex items-center gap-2 text-sm font-semibold ${changePositive ? 'text-emerald-600' : 'text-red-600'}`}>
+                                        {changePositive ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
+                                        <span>{formattedChange}</span>
+                                        <span className="text-[11px] text-slate-500 font-normal">vs previous month</span>
+                                    </div>
+                                </div>
+                                {bestMonth && (
+                                    <div className="bg-slate-50 rounded-xl p-3 flex items-center justify-between">
+                                        <div>
+                                            <p className="text-[11px] uppercase tracking-wide text-slate-400 font-semibold">Strongest month</p>
+                                            <p className="font-semibold text-slate-700">{bestMonth.name}</p>
+                                        </div>
+                                        <span className={`text-base font-bold ${bestMonthColor}`}>{formatGBP(bestMonth.remaining)}</span>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col gap-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Cashflow bars</p>
+                                        <h3 className="text-xl font-bold text-slate-800">Income vs spend</h3>
+                                    </div>
+                                    <div className="text-slate-500 text-xs flex items-center gap-1"><BarChart3 size={16} />6 month view</div>
+                                </div>
+                                <div className="flex items-end gap-4 h-36 overflow-x-auto pb-2">
+                                    {lastSixSummaries.map(entry => {
+                                        const shortLabel = entry.name.split(' ')[0] || entry.name;
+                                        const incomeHeight = `${(entry.income / chartBaseline) * 100}%`;
+                                        const expenseHeight = `${(entry.expenses / chartBaseline) * 100}%`;
+                                        return (
+                                            <div key={entry.id} className="flex flex-col items-center gap-1 w-12">
+                                                <div className="flex items-end gap-1 h-24 w-full justify-center">
+                                                    <div className="w-2 rounded-full bg-emerald-400" style={{ height: incomeHeight }} />
+                                                    <div className="w-2 rounded-full bg-red-400" style={{ height: expenseHeight }} />
+                                                </div>
+                                                <span className="text-[10px] text-slate-500 text-center truncate w-full">{shortLabel}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div className="text-[11px] text-slate-500 flex items-center gap-4">
+                                    <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-400" /> Income</div>
+                                    <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400" /> Outgoing</div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     <div className="flex flex-wrap content-start gap-2">
                         
                         {/* Render Folders */}
@@ -436,20 +690,21 @@ const FolderDashboard: React.FC<FolderDashboardProps> = ({ folders, months, onUp
                         ))}
 
                         {/* Render Sheets */}
-                        {visibleMonths.map(month => (
+                        {visibleMonthEntries.map(({ month, summary }) => (
                             <div key={month.id} onDoubleClick={() => onOpenMonth(month.id)}>
-                                <DraggableSheet 
-                                    month={month} 
+                                <DraggableSheet
+                                    month={month}
                                     isSelected={selection.includes(month.id)}
                                     onClick={(e) => handleItemClick(e, month.id)}
                                     onContextMenu={(e) => handleContextMenu(e, 'sheet', month.id)}
                                     onHover={() => setHoveredMonthId(month.id)}
                                     onLeave={() => setHoveredMonthId(null)}
+                                    summary={summary}
                                 />
                             </div>
                         ))}
 
-                        {visibleFolders.length === 0 && visibleMonths.length === 0 && (
+                        {visibleFolders.length === 0 && visibleMonthEntries.length === 0 && (
                              <div className="w-full h-64 flex flex-col items-center justify-center text-slate-400 pointer-events-none select-none">
                                 <div className="bg-slate-100 p-4 rounded-full mb-3"><FolderIcon size={32} className="opacity-50" /></div>
                                 <p>This folder is empty</p>
