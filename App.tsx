@@ -24,6 +24,19 @@ const App: React.FC = () => {
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<(() => void) | null>(null);
 
+  // Warn when the user tries to close the tab with unsaved work
+  useEffect(() => {
+      const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+          if (!hasUnsavedChanges) return;
+          event.preventDefault();
+          event.returnValue = '';
+          return '';
+      };
+
+      window.addEventListener('beforeunload', handleBeforeUnload);
+      return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
   useEffect(() => {
     const storedMonths = getStoredMonths();
     const storedFolders = getStoredFolders();
