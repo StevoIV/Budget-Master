@@ -545,64 +545,70 @@ const FolderDashboard: React.FC<FolderDashboardProps> = ({ folders, months, onUp
                     </div>
                 </div>
 
-                {selection.length > 0 && (
-                    <div className="bg-blue-50 border-b border-blue-100 px-6 py-3 flex flex-wrap items-center gap-3 text-sm text-blue-900" onClick={(e) => e.stopPropagation()}>
-                        <span className="font-semibold">{selection.length} selected</span>
-                        {selectedFolders.length > 0 && (
-                            <span className="text-xs uppercase tracking-wide text-blue-600">{selectedFolders.length} folder(s)</span>
-                        )}
-                        {hasSheetSelection && (
-                            <span className="text-xs uppercase tracking-wide text-blue-600">{selectedSheets.length} sheet(s)</span>
-                        )}
-                        {hasSheetSelection && (
-                            <>
-                                <div className="flex items-center gap-2">
-                                    <label className="text-xs font-semibold uppercase tracking-wide">Move to</label>
-                                    <select
-                                        value={bulkMoveTarget}
-                                        onChange={(e) => {
-                                            const value = e.target.value;
-                                            setBulkMoveTarget(value);
-                                            if (!value) return;
-                                            const destination = value === '__root' ? null : value;
-                                            handleBulkMove(destination);
-                                            setBulkMoveTarget('');
-                                        }}
-                                        className="py-1.5 px-3 rounded-lg border border-blue-200 bg-white text-xs text-blue-900"
-                                    >
-                                        <option value="">Select…</option>
-                                        <option value="__root">Home</option>
-                                        {folders.map(folder => (
-                                            <option key={folder.id} value={folder.id}>{folder.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                <div className="flex-1 relative w-full">
+                    {selection.length > 0 && (
+                        <div className="pointer-events-none absolute inset-x-0 top-0 px-6 pt-4 z-20">
+                            <div
+                                className="pointer-events-auto bg-blue-50 border border-blue-100 px-6 py-3 flex flex-wrap items-center gap-3 text-sm text-blue-900 rounded-2xl shadow-lg"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <span className="font-semibold">{selection.length} selected</span>
+                                {selectedFolders.length > 0 && (
+                                    <span className="text-xs uppercase tracking-wide text-blue-600">{selectedFolders.length} folder(s)</span>
+                                )}
+                                {hasSheetSelection && (
+                                    <span className="text-xs uppercase tracking-wide text-blue-600">{selectedSheets.length} sheet(s)</span>
+                                )}
+                                {hasSheetSelection && (
+                                    <>
+                                        <div className="flex items-center gap-2">
+                                            <label className="text-xs font-semibold uppercase tracking-wide">Move to</label>
+                                            <select
+                                                value={bulkMoveTarget}
+                                                onChange={(e) => {
+                                                    const value = e.target.value;
+                                                    setBulkMoveTarget(value);
+                                                    if (!value) return;
+                                                    const destination = value === '__root' ? null : value;
+                                                    handleBulkMove(destination);
+                                                    setBulkMoveTarget('');
+                                                }}
+                                                className="py-1.5 px-3 rounded-lg border border-blue-200 bg-white text-xs text-blue-900"
+                                            >
+                                                <option value="">Select…</option>
+                                                <option value="__root">Home</option>
+                                                {folders.map(folder => (
+                                                    <option key={folder.id} value={folder.id}>{folder.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <button
+                                            onClick={handleBulkDuplicate}
+                                            className="flex items-center gap-1 bg-white text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-100"
+                                        >
+                                            <Copy size={14} /> Duplicate
+                                        </button>
+                                    </>
+                                )}
                                 <button
-                                    onClick={handleBulkDuplicate}
-                                    className="flex items-center gap-1 bg-white text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-100"
+                                    onClick={handleBulkDelete}
+                                    className="flex items-center gap-1 text-xs font-semibold text-red-600 bg-white border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50"
                                 >
-                                    <Copy size={14} /> Duplicate
+                                    <Trash2 size={14} /> Delete
                                 </button>
-                            </>
-                        )}
-                        <button
-                            onClick={handleBulkDelete}
-                            className="flex items-center gap-1 text-xs font-semibold text-red-600 bg-white border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50"
-                        >
-                            <Trash2 size={14} /> Delete
-                        </button>
-        
-                        <button
-                            onClick={() => setSelection([])}
-                            className="text-xs text-blue-600 underline font-semibold"
-                        >
-                            Clear
-                        </button>
-                    </div>
-                )}
 
-                {/* Grid Area */}
-                <div className="flex-1 p-6 bg-slate-50 overflow-y-auto pb-72"> {/* Significant padding to prevent content hiding behind static footer */}
+                                <button
+                                    onClick={() => setSelection([])}
+                                    className="text-xs text-blue-600 underline font-semibold"
+                                >
+                                    Clear
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Grid Area */}
+                    <div className="flex-1 p-6 bg-slate-50 overflow-y-auto pb-72"> {/* Significant padding to prevent content hiding behind static footer */}
                     {insightsAvailable && (
                         <div className="mb-6 grid gap-4 xl:grid-cols-2">
                             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col gap-4">
