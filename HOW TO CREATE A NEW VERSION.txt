@@ -1,0 +1,25 @@
+If you want to update your code and build a new version of your executable (e.g., BudgetMaster 1.1.0), follow these steps:
+
+1. Update Your Code
+Make whatever changes you want in your src files (App.tsx, components/Dashboard.tsx, etc.) inside Visual Studio Code.
+Remember to save your files (Ctrl + S)!
+
+
+2. Update Version Number (Optional but Recommended)
+Open package.json and find the version line near the top:
+code
+JSON
+"version": "1.0.0",
+Change it to something new, like "1.1.0". This helps you keep track of which .exe is which.
+
+
+3. Rebuild
+Open your Terminal in VS Code (Ctrl + ~ or Terminal > New Terminal) and run:
+code
+Bash
+npm run electron:build
+
+
+4. Get Your New File
+Once the build finishes, go to your dist_electron folder again. You will see a new installer (e.g., BudgetMaster Setup 1.1.0.exe).
+Tip: You do not need to run npm install again unless you add new libraries. Just editing existing code only requires a rebuild.
