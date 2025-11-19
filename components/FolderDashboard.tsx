@@ -20,6 +20,36 @@ type SortMode = 'recent' | 'name-asc' | 'remaining-desc' | 'remaining-asc';
 type MonthSummary = { income: number; expenses: number; remaining: number };
 type TimelineSummary = MonthSummary & { id: string; name: string; index: number };
 
+const getMonthSummary = (month: BudgetMonth): MonthSummary => {
+    let income = 0;
+    let expenses = 0;
+
+    month.transactions.forEach(t => {
+        const isStandard = Object.values(TransactionType).includes(t.type as TransactionType);
+        let isIncome = false;
+        let isExpense = false;
+
+        if (t.type === TransactionType.INCOMING) {
+            isIncome = true;
+        } else if (isStandard) {
+            isExpense = true;
+        } else {
+            const style = month.sectionStyles[t.type];
+            if (style?.type === 'income') isIncome = true;
+            else isExpense = true;
+        }
+
+        if (isIncome) income += t.amount;
+        if (isExpense) expenses += t.amount;
+    });
+
+    Object.values(month.sliders).forEach(group => {
+        group.forEach(s => expenses += s.value);
+    });
+
+    return { income, expenses, remaining: income - expenses };
+};
+
 // Draggable Sheet Icon
 const DraggableSheet = ({
     month,
@@ -282,38 +312,6 @@ const FolderDashboard: React.FC<FolderDashboardProps> = ({ folders, months, onUp
     };
 
     // -- Calculations for Preview --
-    const getMonthSummary = (month: BudgetMonth): MonthSummary => {
-        let income = 0;
-        let expenses = 0;
-
-        // 1. Sum Transactions
-        month.transactions.forEach(t => {
-            const isStandard = Object.values(TransactionType).includes(t.type as TransactionType);
-            let isIncome = false;
-            let isExpense = false;
-
-            if (t.type === TransactionType.INCOMING) {
-                isIncome = true;
-            } else if (isStandard) {
-                isExpense = true;
-            } else {
-                // Custom Type Logic
-                const style = month.sectionStyles[t.type];
-                if (style?.type === 'income') isIncome = true;
-                else isExpense = true;
-            }
-
-            if (isIncome) income += t.amount;
-            if (isExpense) expenses += t.amount;
-        });
-
-        // 2. Sum Sliders (assuming all sliders are expenses for now, per dashboard logic)
-        Object.values(month.sliders).forEach(group => {
-            group.forEach(s => expenses += s.value);
-        });
-
-        return { income, expenses, remaining: income - expenses };
-    };
 
     const previewSummary = useMemo(() => {
         if (!hoveredMonthId) return null;
