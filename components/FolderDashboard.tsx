@@ -717,6 +717,7 @@ const FolderDashboard: React.FC<FolderDashboardProps> = ({ folders, months, onUp
                         )}
                     </div>
                 </div>
+                </div>
 
                 {/* --- STATIC PREVIEW SUMMARY FOOTER --- */}
                 {/* Always rendered, content depends on hover state. Fixed height prevents layout shifts. */}
